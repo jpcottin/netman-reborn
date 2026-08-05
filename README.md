@@ -45,6 +45,21 @@ cargo build --release
 Le binaire est `target\release\netman.exe`. Il sert le dossier `static\`
 (chemin réglable avec `--static-dir`), qui doit donc accompagner l'exécutable.
 
+### FreeBSD
+
+netman se compile et tourne aussi sur **FreeBSD**, où la capture passe par la
+libpcap et les périphériques `bpf(4)` de la base : aucune dépendance
+supplémentaire, aucun patch du code.
+
+```sh
+cargo build --release
+./target/release/netman --iface em0     # en root, pour l'accès à bpf(4)
+```
+
+Un port prêt à l'emploi est fourni dans **`freebsd-port/`** — voir le README
+de ce répertoire. La page de manuel `netman.1` documente les options, les
+privilèges de capture et les prérequis WebGL des navigateurs.
+
 ## Exécution
 
 ```powershell
