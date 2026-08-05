@@ -1,0 +1,17 @@
+Netman Reborn is a modern recreation of two tools from the Netman suite
+(Curtin University, 1993): Etherman, which shows layer 2 conversations
+between MAC addresses, and Interman, which shows layer 3 conversations
+between IPv4 and IPv6 addresses.  Both views are displayed side by side in
+a web browser and are fed by a single passive capture.
+
+Nodes are laid out the way the original tools did it.  Etherman places every
+station on one large circle, since a layer 2 network is flat and all stations
+share the same segment, while Interman draws one circle per network (classful
+IPv4, /64 for IPv6) with the networks spread over a ring.  Node size follows
+the cumulative byte count, edge width follows the observed bit rate, and the
+colour of an edge is that of its dominant protocol.
+
+MAC addresses are labelled with their vendor from the embedded Wireshark OUI
+database, and IP addresses are renamed as soon as a reverse DNS lookup
+succeeds.  Neither resolution ever happens on the packet path.  The tool is
+strictly passive: it captures and displays, and never injects traffic.

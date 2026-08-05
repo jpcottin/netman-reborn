@@ -1,0 +1,44 @@
+[
+{ type: install
+  message: <<EOM
+netman serves its web interface on http://127.0.0.1:8080/ by default.  Pass
+--listen 0.0.0.0 to reach it from another host, and open the port in your
+firewall accordingly.
+
+The interface needs a browser with a working WebGL context, and on a machine
+with no usable GPU the two common browsers do not behave the same way:
+www/firefox works as installed, while www/linux-chrome must be started with
+--enable-unsafe-swiftshader or the page hangs on "connecting" forever.  See
+the WEB INTERFACE AND WEBGL section of netman(1) for the reason and for how
+to tell this apart from a network problem.
+
+Live capture reads the bpf(4) devices, so netman is normally run as root.
+To let a non-root user capture instead, relax the permissions of /dev/bpf
+with a devfs.rules(5) entry:
+
+    [netman=10]
+    add path 'bpf*' mode 0640 group netman
+
+and enable it in /etc/rc.conf:
+
+    devfs_system_ruleset="netman"
+
+Note that read access to bpf(4) is enough to observe all traffic reaching
+the interface, so grant it only to trusted users.
+
+To run netman at boot, set in /etc/rc.conf:
+
+    netman_enable="YES"
+    netman_iface="em0"		# index or name substring, required
+    netman_listen="127.0.0.1"	# 0.0.0.0 to allow access from the network
+    netman_port="8080"
+
+On a switched network you will only see your own traffic plus broadcast and
+multicast.  Connect the machine to a SPAN/mirror port or a TAP to observe
+more; netman stays passive by design.
+
+The frontend files are installed in %%DATADIR%%/static, which is the
+built-in default for --static-dir.
+EOM
+}
+]

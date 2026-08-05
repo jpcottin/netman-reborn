@@ -1,0 +1,50 @@
+#!/bin/sh
+
+# PROVIDE: netman
+# REQUIRE: LOGIN
+# KEYWORD: shutdown
+
+# Add the following lines to /etc/rc.conf.local or /etc/rc.conf to enable
+# this service:
+#
+# netman_enable (bool):	Set to NO by default.
+#			Set it to YES to enable netman.
+# netman_iface (str):	Capture interface, as an index or a name substring.
+#			Required, there is no default.
+# netman_listen (str):	Listen address, 127.0.0.1 by default.
+#			Set to 0.0.0.0 to allow access from other hosts.
+# netman_port (int):	Listen port, 8080 by default.
+# netman_fade (int):	Seconds after which silent nodes disappear,
+#			60 by default.
+# netman_flags (str):	Additional command line flags.
+
+. /etc/rc.subr
+
+name=netman
+rcvar=netman_enable
+desc="Passive network monitor"
+
+load_rc_config $name
+
+: ${netman_enable:="NO"}
+: ${netman_listen:="127.0.0.1"}
+: ${netman_port:="8080"}
+: ${netman_fade:="60"}
+
+pidfile=/var/run/${name}.pid
+procname=%%PREFIX%%/bin/${name}
+command=/usr/sbin/daemon
+command_args="-S -T ${name} -p ${pidfile} ${procname} \
+	--iface ${netman_iface} --listen ${netman_listen} \
+	--port ${netman_port} --fade ${netman_fade} ${netman_flags}"
+
+start_precmd=netman_precmd
+
+netman_precmd()
+{
+	if [ -z "${netman_iface}" ]; then
+		err 1 "netman_iface is not set in rc.conf"
+	fi
+}
+
+run_rc_command "$1"

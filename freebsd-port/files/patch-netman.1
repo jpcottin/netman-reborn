@@ -1,0 +1,139 @@
+--- netman.1.orig	2026-08-05 21:24:07 UTC
++++ netman.1
+@@ -100,6 +100,23 @@ so it should only be granted to trusted users.
+ Read access to them is enough to observe every frame reaching the interface,
+ so it should only be granted to trusted users.
+ .Pp
++On
++.Fx
++the devices are the
++.Xr bpf 4
++ones, and a
++.Xr devfs.rules 5
++entry grants them to a group:
++.Bd -literal -offset indent
++[netman=10]
++add path 'bpf*' mode 0640 group netman
++.Ed
++.Pp
++enabled with
++.Va devfs_system_ruleset
++in
++.Xr rc.conf 5 .
++.Pp
+ Replaying a capture file with
+ .Fl -pcap-file
+ needs no privileges at all.
+@@ -119,10 +136,36 @@ ever requested from the server.
+ The symptom points at the network, but the cause is graphics: no packet is
+ ever requested from the server.
+ .Pp
+-This is worth knowing on any machine with no usable GPU, such as a virtual
+-machine or a headless server, where a browser may end up without WebGL unless
+-it falls back to a software implementation.
++This matters on
++.Fx
++because the two common browsers behave differently on a machine with no
++usable GPU, such as a virtual machine or a headless server.
++.Bl -tag -width "www/linux-chrome"
++.It www/firefox
++Works as installed.
++Firefox keeps its software WebGL fallback enabled by default, so no special
++invocation is needed.
++.It www/linux-chrome
++Needs an explicit flag:
++.Bd -literal -offset indent
++google-chrome --enable-unsafe-swiftshader \e
++    http://localhost:8080/
++.Ed
+ .Pp
++This is the Linux binary running under
++.Xr linux 4
++emulation, so it has no access to the host GPU, and recent Chrome releases
++have deprecated the automatic fallback to software WebGL.
++Started without the flag it has no WebGL context at all, and the interface
++hangs as described above.
++The flag selects a software implementation, which is the intended use here:
++the page is served locally and is trusted.
++.El
++.Pp
++The same flag applies to the native
++.Pa www/chromium
++port, and to other Chromium-derived browsers, when they cannot reach a GPU.
++.Pp
+ To tell a WebGL problem from a real network problem, open the browser
+ developer console.
+ A WebGL failure shows an exception raised while the renderer is being
+@@ -130,12 +173,43 @@ Firefox also reports the state of WebGL under
+ Firefox also reports the state of WebGL under
+ .Pa about:support .
+ .Sh FILES
+-.Bl -tag -width "static/" -compact
+-.It Pa static/
+-Frontend files served by the web interface, unless
++.Bl -tag -width "%%DATADIR%%/static" -compact
++.It Pa %%PREFIX%%/bin/netman
++The program itself.
++.It Pa %%DATADIR%%/static
++Frontend files served by the web interface, which is where
+ .Fl -static-dir
+-says otherwise.
++points by default in this port.
++.It Pa %%PREFIX%%/etc/rc.d/netman
++Service script.
+ .El
++.Sh RC.CONF VARIABLES
++This port ships an
++.Xr rc 8
++script.
++Setting
++.Va netman_enable
++to
++.Dq YES
++in
++.Xr rc.conf 5
++starts
++.Nm
++at boot.
++.Va netman_iface
++is required and has no default;
++.Va netman_listen ,
++.Va netman_port
++and
++.Va netman_fade
++default to the values documented above, and
++.Va netman_flags
++is appended to the command line.
++.Bd -literal -offset indent
++netman_enable="YES"
++netman_iface="em0"
++netman_listen="0.0.0.0"
++.Ed
+ .Sh EXAMPLES
+ Capture on
+ .Li em0
+@@ -172,7 +246,11 @@ Run with the privileges described in
+ .El
+ .Sh SEE ALSO
+ .Xr tcpdump 1 ,
+-.Xr pcap 3
++.Xr pcap 3 ,
++.Xr bpf 4 ,
++.Xr linux 4 ,
++.Xr devfs.rules 5 ,
++.Xr rc.conf 5
+ .Sh HISTORY
+ This program is
+ .Em netman-reborn ,
+@@ -194,8 +272,9 @@ Of the two, only Etherman left a lasting descendant.
+ running SunOS 4.1.3.
+ .Pp
+ Of the two, only Etherman left a lasting descendant.
+-EtherApe describes itself as modelled after Etherman and carries that lineage
+-on.
++The
++.Pa net-mgmt/etherape
++port describes itself as modelled after Etherman and carries that lineage on.
+ What it did not take over is Interman's layout: one circle per network, with
+ the hosts of a classful IPv4 network, or of an IPv6 /64, grouped together and
+ the networks themselves spread over a ring.
