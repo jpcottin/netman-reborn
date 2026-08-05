@@ -1,0 +1,204 @@
+.Dd August 5, 2026
+.Dt NETMAN 1
+.Os
+.Sh NAME
+.Nm netman
+.Nd passive network monitor with side-by-side layer 2 and layer 3 views
+.Sh SYNOPSIS
+.Nm
+.Op Fl -iface Ar interface
+.Op Fl -pcap-file Ar file
+.Op Fl -listen Ar address
+.Op Fl -port Ar port
+.Op Fl -fade Ar seconds
+.Op Fl -static-dir Ar directory
+.Sh DESCRIPTION
+.Nm
+captures network traffic and serves a web interface showing two views of it
+side by side: Etherman, the layer 2 conversations between MAC addresses, and
+Interman, the layer 3 conversations between IPv4 and IPv6 addresses.
+Both views are fed by a single capture.
+.Pp
+Etherman places every station on one large circle, since a layer 2 network is
+flat and all stations share the same segment.
+Interman draws one circle per network, classful for IPv4 and /64 for IPv6,
+with the networks spread over a ring.
+Node size follows the cumulative byte count, edge width follows the observed
+bit rate, and the colour of an edge is that of its dominant protocol.
+MAC addresses are labelled with their vendor from an embedded OUI database,
+and IP addresses are renamed as soon as a reverse DNS lookup succeeds.
+Neither resolution ever happens on the packet path.
+.Pp
+.Nm
+is strictly passive: it captures and displays, and never injects traffic.
+.Pp
+The following options are available:
+.Bl -tag -width "-static-dir directory"
+.It Fl -iface Ar interface
+Capture interface, given either as an index in the interface list or as a
+substring of an interface name.
+If omitted,
+.Nm
+prints a numbered list of interfaces and prompts for one.
+This option cannot be combined with
+.Fl -pcap-file .
+.It Fl -pcap-file Ar file
+Replay a capture file instead of capturing live.
+No network interface is opened in this mode, and no privileges are needed.
+.It Fl -listen Ar address
+Address the web interface listens on.
+The default is
+.Li 127.0.0.1 ,
+which restricts access to the local machine.
+.Pp
+A wildcard address,
+.Li 0.0.0.0
+or
+.Li :: ,
+means every interface.
+In that case
+.Nm
+opens one socket per address family, so that it is reachable over both IPv4
+and IPv6, and prints one URL per usable local address rather than the
+wildcard itself, which no browser can connect to.
+IPv6 link-local addresses are left out: they require a zone index that
+browsers handle unreliably.
+.It Fl -port Ar port
+TCP port for the HTTP and WebSocket service.
+The default is
+.Li 8080 .
+.It Fl -fade Ar seconds
+Delay after which nodes and edges that have gone silent disappear from the
+views.
+The default is
+.Li 60 .
+This can also be changed from the web interface, where it is synchronised
+across all open tabs.
+.It Fl -static-dir Ar directory
+Directory holding the frontend files served at the root of the web interface.
+The default is
+.Pa static ,
+relative to the current directory.
+Packaged builds normally point this at the installed copy.
+.El
+.Sh CAPTURE PRIVILEGES
+Live capture needs privileged access to the capture device.
+.Pp
+On Windows it requires Npcap.
+Installing it with its default options is enough; the
+.Dq WinPcap API-compatible
+mode is not needed.
+If Npcap was installed with
+.Dq Restrict Npcap driver's access to Administrators only ,
+.Nm
+has to be run as administrator.
+.Pp
+On Unix systems capture goes through the packet filter device, which is
+normally reserved to the super-user, so
+.Nm
+is run as root unless those devices have been opened up to a dedicated group.
+Read access to them is enough to observe every frame reaching the interface,
+so it should only be granted to trusted users.
+.Pp
+Replaying a capture file with
+.Fl -pcap-file
+needs no privileges at all.
+.Pp
+On a switched network only the local host's own traffic plus broadcast and
+multicast is visible.
+Connect the machine to a SPAN port, mirror port or TAP to observe more.
+.Nm
+stays passive by design and cannot work around this.
+.Sh WEB INTERFACE AND WEBGL
+The frontend renders both graphs with sigma.js, which requires a working
+WebGL context.
+Without one, the page loads but stops before opening its WebSocket, and the
+status indicator stays on
+.Dq connecting
+indefinitely.
+The symptom points at the network, but the cause is graphics: no packet is
+ever requested from the server.
+.Pp
+This is worth knowing on any machine with no usable GPU, such as a virtual
+machine or a headless server, where a browser may end up without WebGL unless
+it falls back to a software implementation.
+.Pp
+To tell a WebGL problem from a real network problem, open the browser
+developer console.
+A WebGL failure shows an exception raised while the renderer is being
+constructed, and no WebSocket connection is ever attempted.
+Firefox also reports the state of WebGL under
+.Pa about:support .
+.Sh FILES
+.Bl -tag -width "static/" -compact
+.It Pa static/
+Frontend files served by the web interface, unless
+.Fl -static-dir
+says otherwise.
+.El
+.Sh EXAMPLES
+Capture on
+.Li em0
+and serve the interface to the local machine only:
+.Bd -literal -offset indent
+netman --iface em0
+.Ed
+.Pp
+Serve it to the whole network over both IPv4 and IPv6, on a different port:
+.Bd -literal -offset indent
+netman --iface em0 --listen 0.0.0.0 --port 9000
+.Ed
+.Pp
+Replay a capture file, without touching any interface:
+.Bd -literal -offset indent
+netman --pcap-file capture.pcap
+.Ed
+.Sh DIAGNOSTICS
+.Bl -tag -width Ds
+.It The status indicator stays on "connecting"
+The browser has no WebGL context.
+See
+.Sx WEB INTERFACE AND WEBGL .
+.It Interface not found
+The argument to
+.Fl -iface
+matched no interface.
+Run
+.Nm
+with no option to get the numbered list.
+.It Permission denied on the capture device
+Run with the privileges described in
+.Sx CAPTURE PRIVILEGES .
+.El
+.Sh SEE ALSO
+.Xr tcpdump 1 ,
+.Xr pcap 3
+.Sh HISTORY
+This program is
+.Em netman-reborn ,
+a modern recreation.
+It is not the original Netman, shares no code with it, and is not maintained
+by the authors of the original.
+What it reproduces is the intent of those tools and their visual language.
+.Pp
+The Netman suite was developed at Curtin University, in Western Australia,
+and dates from 1993.
+Two of its tools are recreated here: Etherman, which showed layer 2
+conversations between MAC addresses, and Interman, which showed layer 3
+conversations between IP addresses.
+Both were X11 programs, and separate ones: seeing the two views meant running
+the two tools.
+.Pp
+The author of this recreation used the original tools in the 1990s at
+T\('el\('ecom Paris, his engineering school, on Sun SPARC workstations
+running SunOS 4.1.3.
+.Pp
+Of the two, only Etherman left a lasting descendant.
+EtherApe describes itself as modelled after Etherman and carries that lineage
+on.
+What it did not take over is Interman's layout: one circle per network, with
+the hosts of a classful IPv4 network, or of an IPv6 /64, grouped together and
+the networks themselves spread over a ring.
+That layout is reproduced here.
+.Sh AUTHORS
+.An Alexandre Fenyo
