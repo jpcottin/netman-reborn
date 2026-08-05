@@ -28,10 +28,17 @@ L'outil est un **moniteur passif**. Voir §3.
 2. **La capture ne bloque jamais sur l'UI.** Un thread OS dédié exécute la
    boucle pcap (bloquante). Il communique avec le reste via un channel. Aucune
    opération réseau/DNS/rendu ne s'exécute dans ce thread.
-3. **Capture native Windows uniquement, via Npcap.** Ne JAMAIS capturer depuis
-   WSL2 : son namespace réseau virtualisé ne voit pas le trafic promiscuous de
-   la carte physique. Le binaire de capture se compile et tourne côté hôte
-   Windows. Le dev peut vivre dans WSL, mais l'exécutable de capture est natif.
+3. **Capture toujours native, jamais depuis une couche virtualisée.** Ne JAMAIS
+   capturer depuis WSL2 : son namespace réseau virtualisé ne voit pas le trafic
+   promiscuous de la carte physique. Le dev peut vivre dans WSL, mais
+   l'exécutable de capture tourne sur l'hôte.
+   Deux plateformes sont supportées : **Windows** via **Npcap**, et **FreeBSD**
+   via la **libpcap** et les périphériques **bpf(4)** de la base — sans
+   dépendance supplémentaire. Le code spécifique à Windows (chargement de
+   `wpcap.dll`) reste isolé derrière `#[cfg(windows)]` ; le portage FreeBSD n'a
+   demandé aucun patch du code. Le port FreeBSD est maintenu dans
+   `freebsd-port/` et doit suivre toute modification de la CLI, du `rc.d` ou
+   des chemins d'installation.
 4. **Aucune résolution bloquante dans le chemin de capture.** OUI (MAC→vendeur)
    et hostnames sont best-effort, asynchrones, jamais sur le trajet critique du
    paquet.
@@ -63,7 +70,11 @@ figer dans `Cargo.toml` / `package.json`. Les majeures ci-dessous sont un point
 de départ **à confirmer**, pas une autorité.
 
 ### Rust (backend)
-- `pcap` — capture via Npcap sous Windows. _(version : à figer en Phase 0)_
+- `pcap` — capture via Npcap sous Windows, via libpcap et `bpf(4)` sous
+  FreeBSD. _(version : à figer en Phase 0)_
+- `socket2` — sockets d'écoute explicites : une adresse non spécifiée ouvre
+  une socket par famille, l'IPv6 forcée en `V6ONLY` (le défaut système diverge
+  entre BSD et Linux).
 - `etherparse` — décodage Ethernet / IPv4 / IPv6 / TCP / UDP / ICMP / ARP.
 - `tokio` (1.x) + `axum` — serveur statique + WebSocket.
 - `tokio::sync::broadcast` — diffusion des deltas aux clients WS.
