@@ -32,13 +32,15 @@ L'outil est un **moniteur passif**. Voir §3.
    capturer depuis WSL2 : son namespace réseau virtualisé ne voit pas le trafic
    promiscuous de la carte physique. Le dev peut vivre dans WSL, mais
    l'exécutable de capture tourne sur l'hôte.
-   Deux plateformes sont supportées : **Windows** via **Npcap**, et **FreeBSD**
-   via la **libpcap** et les périphériques **bpf(4)** de la base — sans
-   dépendance supplémentaire. Le code spécifique à Windows (chargement de
-   `wpcap.dll`) reste isolé derrière `#[cfg(windows)]` ; le portage FreeBSD n'a
-   demandé aucun patch du code. Le port FreeBSD est maintenu dans
-   `freebsd-port/` et doit suivre toute modification de la CLI, du `rc.d` ou
-   des chemins d'installation.
+   Trois plateformes sont supportées : **Windows** via **Npcap**, **FreeBSD**
+   via la **libpcap** et les périphériques **bpf(4)** de la base, et **macOS**
+   via la **libpcap** du système et `bpf(4)` — sans dépendance supplémentaire.
+   Le code spécifique à Windows (chargement de `wpcap.dll`) reste isolé
+   derrière `#[cfg(windows)]` ; les portages FreeBSD et macOS n'ont demandé
+   aucun patch du code. Le port FreeBSD est maintenu dans `freebsd-port/`, la
+   formule Homebrew macOS dans le tap `AlexandreFenyo/homebrew-netman` ; l'un
+   comme l'autre doivent suivre toute modification de la CLI, du `rc.d` ou des
+   chemins d'installation.
 4. **Aucune résolution bloquante dans le chemin de capture.** OUI (MAC→vendeur)
    et hostnames sont best-effort, asynchrones, jamais sur le trajet critique du
    paquet.
