@@ -388,13 +388,44 @@ fn prompt_device(devices: &[pcap::Device]) -> anyhow::Result<pcap::Device> {
         std::io::stdin()
             .read_line(&mut line)
             .context("failed to read interface choice")?;
+        // Chaîne vide (et non pas ligne vide) : stdin est clos, insister
+        // reviendrait à boucler indéfiniment.
         if line.is_empty() {
             anyhow::bail!("stdin closed before an interface was chosen");
         }
-        match line.trim().parse::<usize>() {
-            Ok(i) if i < devices.len() => return Ok(devices[i].clone()),
-            _ => println!("Invalid choice, expected 0..{}", devices.len() - 1),
+        match parse_choice(&line, devices.len()) {
+            Choice::Selected(i) => return Ok(devices[i].clone()),
+            Choice::Again => {}
+            Choice::Invalid => println!("Invalid choice, expected 0..{}", devices.len() - 1),
         }
+    }
+}
+
+/// Ce que le programme doit faire d'une saisie à l'invite de choix.
+#[derive(Debug, PartialEq, Eq)]
+enum Choice {
+    /// Interface retenue, par son index.
+    Selected(usize),
+    /// Ré-inviter sans rien dire.
+    Again,
+    /// Saisie fautive : l'expliquer avant de ré-inviter.
+    Invalid,
+}
+
+/// Interprète une saisie à l'invite de choix d'interface.
+///
+/// Une ligne vide donne [`Choice::Again`] plutôt qu'une erreur : c'est la
+/// frappe accidentelle la plus courante — un retour chariot resté dans le
+/// tampon du terminal, par exemple — et la sanctionner d'un message
+/// d'erreur laisse croire à un refus alors que rien n'a été saisi.
+fn parse_choice(line: &str, count: usize) -> Choice {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return Choice::Again;
+    }
+    match trimmed.parse::<usize>() {
+        Ok(i) if i < count => Choice::Selected(i),
+        _ => Choice::Invalid,
     }
 }
 
@@ -614,5 +645,36 @@ mod tests {
         let locals = || ips(&["192.168.0.10"]);
         let urls = service_urls(&[sock("0.0.0.0:9000")], locals);
         assert_eq!(urls, vec!["http://192.168.0.10:9000/"]);
+    }
+
+    #[test]
+    fn an_index_in_range_is_selected() {
+        assert_eq!(parse_choice("0\n", 2), Choice::Selected(0));
+        assert_eq!(parse_choice("1\n", 2), Choice::Selected(1));
+    }
+
+    #[test]
+    fn surrounding_whitespace_is_ignored() {
+        assert_eq!(parse_choice("  1  \n", 2), Choice::Selected(1));
+    }
+
+    #[test]
+    fn an_empty_line_asks_again_without_complaining() {
+        assert_eq!(parse_choice("\n", 2), Choice::Again);
+        assert_eq!(parse_choice("   \n", 2), Choice::Again);
+        assert_eq!(parse_choice("\t\r\n", 2), Choice::Again);
+    }
+
+    #[test]
+    fn an_index_out_of_range_is_invalid() {
+        assert_eq!(parse_choice("2\n", 2), Choice::Invalid);
+        assert_eq!(parse_choice("99\n", 2), Choice::Invalid);
+    }
+
+    #[test]
+    fn a_non_numeric_answer_is_invalid() {
+        assert_eq!(parse_choice("vmx0\n", 2), Choice::Invalid);
+        assert_eq!(parse_choice("-1\n", 2), Choice::Invalid);
+        assert_eq!(parse_choice("1.5\n", 2), Choice::Invalid);
     }
 }
