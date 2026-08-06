@@ -1,4 +1,4 @@
-TIMESTAMP = 1785965011
+TIMESTAMP = 1786050863
 SHA256 (rust/crates/aho-corasick-1.1.4.crate) = ddd31a130427c27518df266943a5308ed92d4b226cc639f5a8f1002816174301
 SIZE (rust/crates/aho-corasick-1.1.4.crate) = 184015
 SHA256 (rust/crates/anstream-1.0.0.crate) = 824a212faf96e9acacdbd09febd34438f8f711fb84e09a8916013cd7815ca28d
@@ -293,5 +293,5 @@ SHA256 (rust/crates/zerocopy-derive-0.8.55.crate) = 0fe976fb70c78cd64cccfe3a6fc1
 SIZE (rust/crates/zerocopy-derive-0.8.55.crate) = 103316
 SHA256 (rust/crates/zmij-1.0.23.crate) = 29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b
 SIZE (rust/crates/zmij-1.0.23.crate) = 28612
-SHA256 (AlexandreFenyo-netman-reborn-v1.0.0_GH0.tar.gz) = 3bb259dd0cbffed3ccd169e72308caabdaea913f2b804764fbc94fc6b5945b7b
-SIZE (AlexandreFenyo-netman-reborn-v1.0.0_GH0.tar.gz) = 1541337
+SHA256 (AlexandreFenyo-netman-reborn-v1.0.1_GH0.tar.gz) = a03280e9b857445dd0523971b7ce12a7275d35226ff9db65bee9d167aa76da5b
+SIZE (AlexandreFenyo-netman-reborn-v1.0.1_GH0.tar.gz) = 1556177

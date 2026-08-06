@@ -1,6 +1,6 @@
 PORTNAME=	netman
 DISTVERSIONPREFIX=	v
-DISTVERSION=	1.0.0
+DISTVERSION=	1.0.1
 CATEGORIES=	net-mgmt
 
 MAINTAINER=	fbsd.bugzilla@fenyo.net
