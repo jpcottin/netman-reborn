@@ -1,4 +1,4 @@
-.Dd August 5, 2026
+.Dd August 7, 2026
 .Dt NETMAN 1
 .Os
 .Sh NAME
@@ -99,6 +99,16 @@ normally reserved to the super-user, so
 is run as root unless those devices have been opened up to a dedicated group.
 Read access to them is enough to observe every frame reaching the interface,
 so it should only be granted to trusted users.
+.Pp
+On macOS the
+.Pa /dev/bpf*
+devices are reserved to root by default.
+Membership of the
+.Dq access_bpf
+group, created by Wireshark's ChmodBPF package, grants capture without
+running
+.Nm
+as root.
 .Pp
 Replaying a capture file with
 .Fl -pcap-file
