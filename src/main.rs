@@ -398,7 +398,6 @@ fn prompt_device(devices: &[pcap::Device]) -> anyhow::Result<pcap::Device> {
     }
 }
 
-/// Adresses IP portées par les interfaces locales, telles que les rapporte la
 /// Ouvre les sockets d'écoute.
 ///
 /// Une adresse non spécifiée (`0.0.0.0` ou `::`) signifie « toutes les
