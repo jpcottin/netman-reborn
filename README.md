@@ -60,6 +60,31 @@ Un port prêt à l'emploi est fourni dans **`freebsd-port/`** — voir le README
 de ce répertoire. La page de manuel `netman.1` documente les options, les
 privilèges de capture et les prérequis WebGL des navigateurs.
 
+### macOS
+
+netman se compile et tourne également sur **macOS**, où la capture passe par
+la libpcap du système et les périphériques `bpf(4)` : aucune dépendance
+supplémentaire, aucun patch du code.
+
+```sh
+cargo build --release
+./target/release/netman --iface en0
+```
+
+L'accès à `/dev/bpf*` est réservé à root par défaut : lancez netman avec
+`sudo`, ou rejoignez le groupe `access_bpf` (créé par le ChmodBPF de
+Wireshark) pour capturer sans élévation.
+
+Une formule Homebrew est disponible dans le tap
+[`AlexandreFenyo/homebrew-netman`](https://github.com/AlexandreFenyo/homebrew-netman) —
+elle compile depuis les sources et installe le frontend et la page de manuel
+aux emplacements standard, le chemin par défaut de `--static-dir` pointant
+sur la copie installée :
+
+```sh
+brew install alexandrefenyo/netman/netman
+```
+
 ## Exécution
 
 ```powershell
