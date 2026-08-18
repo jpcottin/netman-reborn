@@ -6,18 +6,16 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
 
 use anyhow::Context;
-use axum::extract::ws::Utf8Bytes;
 use clap::Parser;
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc};
 
+use netman::agg;
 use netman::capture::{self, CaptureStats};
 use netman::model::packet::PacketMeta;
 use netman::model::tables::Tables;
-use netman::resolve;
 use netman::server::{self, AppState, IfaceState};
 use netman::wsproto::IfaceInfo;
 
@@ -53,13 +51,6 @@ struct Cli {
     static_dir: String,
 }
 
-/// Capacité du channel capture→agrégateur. Plein ⇒ on jette (invariant 5).
-const CHANNEL_CAPACITY: usize = 65536;
-/// Capacité du broadcast des deltas (ring ; les clients lents « laggent »).
-const BROADCAST_CAPACITY: usize = 4096;
-/// Période du tick de diffusion.
-const TICK: Duration = Duration::from_millis(250);
-
 fn main() -> anyhow::Result<()> {
     netman::setup_npcap_dll_path();
 
@@ -75,7 +66,7 @@ fn main() -> anyhow::Result<()> {
     let shutdown = Arc::new(AtomicBool::new(false));
 
     // Channel capture → agrégateur (découplage, invariant 2).
-    let (meta_tx, meta_rx) = mpsc::channel::<PacketMeta>(CHANNEL_CAPACITY);
+    let (meta_tx, meta_rx) = mpsc::channel::<PacketMeta>(agg::CHANNEL_CAPACITY);
 
     // Mode fichier : thread de rejeu simple. Mode live : contrôleur de
     // capture (permet la bascule d'interface depuis le navigateur).
@@ -170,15 +161,17 @@ async fn async_main(
     iface_state: Arc<Mutex<IfaceState>>,
 ) -> anyhow::Result<()> {
     let tables = Arc::new(Mutex::new(Tables::new()));
-    let (deltas_tx, _) = broadcast::channel::<Utf8Bytes>(BROADCAST_CAPACITY);
+    let (deltas_tx, _) = broadcast::channel::<String>(agg::BROADCAST_CAPACITY);
     let fade_secs = Arc::new(AtomicU64::new(
         cli.fade
             .clamp(netman::server::FADE_MIN_SECS, netman::server::FADE_MAX_SECS),
     ));
 
-    tokio::spawn(aggregate_loop(
+    tokio::spawn(agg::aggregate_loop(
         meta_rx,
         Arc::clone(&tables),
+        // Le bureau n'ajoute rien aux deux vues historiques.
+        Arc::new(Mutex::new(agg::NoExt)),
         deltas_tx.clone(),
         Arc::clone(&stats),
         Arc::clone(&fade_secs),
@@ -262,7 +255,7 @@ async fn iface_switch_loop(
     ctl: Arc<capture::Controller>,
     iface_state: Arc<Mutex<IfaceState>>,
     tables: Arc<Mutex<Tables>>,
-    deltas_tx: broadcast::Sender<Utf8Bytes>,
+    deltas_tx: broadcast::Sender<String>,
 ) {
     while let Some(wanted) = iface_rx.recv().await {
         let ctl_for_switch = Arc::clone(&ctl);
@@ -284,93 +277,6 @@ async fn iface_switch_loop(
         };
         if let Some(msg) = message {
             let _ = deltas_tx.send(msg);
-        }
-    }
-}
-
-/// Agrégateur : consomme les PacketMeta par lots, maintient les tables,
-/// diffuse les deltas des entrées modifiées à chaque tick.
-async fn aggregate_loop(
-    mut meta_rx: mpsc::Receiver<PacketMeta>,
-    tables: Arc<Mutex<Tables>>,
-    deltas_tx: broadcast::Sender<Utf8Bytes>,
-    stats: Arc<CaptureStats>,
-    fade_secs: Arc<AtomicU64>,
-) {
-    let mut buf: Vec<PacketMeta> = Vec::with_capacity(4096);
-    let mut tick = tokio::time::interval(TICK);
-    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    let mut capture_done = false;
-    let mut last_log = Instant::now();
-
-    // Résolveur PTR : demandes déclenchées une seule fois par IP (les échecs
-    // d'envoi — file pleine — seront retentés au tick suivant).
-    let (ptr_results_tx, mut ptr_results_rx) =
-        mpsc::channel::<(std::net::IpAddr, String)>(resolve::dns::REQUEST_QUEUE);
-    let ptr_req_tx = resolve::dns::spawn(ptr_results_tx);
-    let mut ptr_requested: std::collections::HashSet<std::net::IpAddr> =
-        std::collections::HashSet::new();
-
-    loop {
-        tokio::select! {
-            biased;
-            received = meta_rx.recv_many(&mut buf, 4096), if !capture_done => {
-                if received == 0 {
-                    // Fin de capture (fichier rejoué) : on continue à servir.
-                    capture_done = true;
-                    continue;
-                }
-                let Ok(mut tables) = tables.lock() else { return };
-                let now = Instant::now();
-                for meta in buf.drain(..) {
-                    tables.ingest(&meta, now);
-                }
-            }
-            resolved = ptr_results_rx.recv() => {
-                let Some((ip, name)) = resolved else { return };
-                let Ok(mut tables) = tables.lock() else { return };
-                tables.set_l3_label(ip, name);
-            }
-            _ = tick.tick() => {
-                let (deltas, dirty_ips) = {
-                    let Ok(mut tables) = tables.lock() else { return };
-                    let dirty_ips = tables.dirty_l3_node_ips();
-                    let mut deltas = tables.drain_deltas();
-                    // Vieillissement : suppressions explicites (invariant 7).
-                    let max_age = Duration::from_secs(fade_secs.load(Ordering::Relaxed));
-                    deltas.extend(tables.fade_sweep(Instant::now(), max_age));
-                    (deltas, dirty_ips)
-                };
-                for ip in dirty_ips {
-                    if resolve::dns::is_resolvable(&ip)
-                        && !ptr_requested.contains(&ip)
-                        && ptr_req_tx.try_send(ip).is_ok()
-                    {
-                        ptr_requested.insert(ip);
-                    }
-                }
-                for delta in &deltas {
-                    if let Some(msg) = server::encode_delta(delta) {
-                        // Erreur = aucun client connecté : sans importance.
-                        let _ = deltas_tx.send(msg);
-                    }
-                }
-                if last_log.elapsed() >= Duration::from_secs(10) {
-                    last_log = Instant::now();
-                    let (l2, l3) = {
-                        let Ok(tables) = tables.lock() else { return };
-                        (tables.l2.len(), tables.l3.len())
-                    };
-                    tracing::info!(
-                        frames = stats.frames.load(Ordering::Relaxed),
-                        l2_convs = l2,
-                        l3_convs = l3,
-                        clients = deltas_tx.receiver_count(),
-                        chan_drops = stats.chan_drops.load(Ordering::Relaxed),
-                        "aggregator status"
-                    );
-                }
-            }
         }
     }
 }

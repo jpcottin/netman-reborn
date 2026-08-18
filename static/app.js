@@ -4,6 +4,8 @@
  * Le backend envoie des mutations atomiques (contrat wsproto, CLAUDE.md §6) :
  *   { type: upsert_node|upsert_edge|remove_node|remove_edge,
  *     view: "ether"|"inter", id, [source, target,] bytes, packets, proto, label }
+ *   (le client Android reçoit aussi view: "app" — vue Appman ; ce client web
+ *   ignore silencieusement les vues inconnues, voir applyDelta)
  * plus { type: "config", fade_secs } (état des réglages, le serveur fait foi).
  * Le client APPLIQUE, il ne recalcule pas. bytes/packets sont des cumuls
  * absolus : un delta manqué est réparé par le suivant.

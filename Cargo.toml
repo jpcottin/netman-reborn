@@ -1,3 +1,9 @@
+# Racine d'espace de travail : le paquet `netman` (bureau) reste le membre par
+# défaut — `cargo build --release` à la racine ne construit que lui. Le crate
+# Android (`android/rust/netman-android`) n'est construit que sur demande.
+[workspace]
+members = [".", "android/rust/netman-android"]
+
 [package]
 name = "netman"
 version = "1.0.1"
@@ -6,9 +12,7 @@ description = "Netman Reborn — Etherman (L2) + Interman (L3) passive network m
 license = "MIT"
 
 [dependencies]
-pcap = "2.4.0"
 etherparse = "0.20.3"
-clap = { version = "4.6.3", features = ["derive"] }
 tokio = { version = "1.53.0", features = [
     "rt-multi-thread",
     "net",
@@ -17,16 +21,23 @@ tokio = { version = "1.53.0", features = [
     "signal",
     "macros",
 ] }
-axum = { version = "0.8.9", features = ["ws"] }
-tower-http = { version = "0.7.0", features = ["fs"] }
 serde = { version = "1.0.229", features = ["derive"] }
 dns-lookup = "2"
-socket2 = "0.6"
 serde_json = "1.0.151"
-futures-util = "0.3"
 anyhow = "1"
 thiserror = "2"
 tracing = "0.1.44"
+
+# Dépendances du bureau uniquement : la bibliothèque compilée pour Android
+# (capture via tun, pas de pcap ; deltas via callback, pas de serveur axum)
+# ne doit tirer aucune d'elles.
+[target.'cfg(not(target_os = "android"))'.dependencies]
+pcap = "2.4.0"
+clap = { version = "4.6.3", features = ["derive"] }
+axum = { version = "0.8.9", features = ["ws"] }
+tower-http = { version = "0.7.0", features = ["fs"] }
+socket2 = "0.6"
+futures-util = "0.3"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
 [target.'cfg(windows)'.dependencies]
