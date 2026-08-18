@@ -1,0 +1,32 @@
+# netman-android — cœur Rust du port Android : lecture du tun de VpnService,
+# agrégation partagée avec le bureau (crate `netman`), deltas via callback
+# UniFFI. Construit avec cargo-ndk (`-p netman-android`), jamais par défaut.
+
+[package]
+name = "netman-android"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[lib]
+name = "netman_android"
+# rlib en plus du cdylib : nécessaire aux tests d'intégration sur l'hôte.
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+
+[dependencies]
+netman = { path = "../../.." }
+uniffi = { version = "0.32", features = ["cli"] }
+tokio = { version = "1.53.0", features = ["rt-multi-thread", "sync", "time", "macros"] }
+libc = "0.2"
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+ipstack = "1.0"
+
+[dev-dependencies]
+etherparse = "0.20.3"
