@@ -1,0 +1,18 @@
+# Outil de génération des bindings UniFFI, isolé dans son propre crate : il ne
+# dépend QUE d'uniffi, jamais de netman-android ni de netman. Ainsi la
+# génération (mode « library », qui lit les métadonnées du .so déjà construit)
+# ne recompile pas la pile bureau — et n'exige donc pas libpcap sur l'hôte.
+
+[package]
+name = "netman-uniffi-bindgen"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "main.rs"
+
+[dependencies]
+uniffi = { version = "0.32", features = ["cli"] }

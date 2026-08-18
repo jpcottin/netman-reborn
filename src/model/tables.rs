@@ -57,7 +57,7 @@ pub struct ConvStats {
 }
 
 impl ConvStats {
-    fn new(now: Instant) -> Self {
+    pub(crate) fn new(now: Instant) -> Self {
         ConvStats {
             bytes: 0,
             packets: 0,
@@ -68,9 +68,15 @@ impl ConvStats {
         }
     }
 
-    fn add(&mut self, bytes: u64, proto: Proto, now: Instant) {
+    pub(crate) fn add(&mut self, bytes: u64, proto: Proto, now: Instant) {
+        self.add_many(bytes, 1, proto, now);
+    }
+
+    /// Ajout groupé (vue Appman : un flux en attente d'attribution est
+    /// appliqué d'un bloc une fois son application connue).
+    pub(crate) fn add_many(&mut self, bytes: u64, packets: u64, proto: Proto, now: Instant) {
         self.bytes += bytes;
-        self.packets += 1;
+        self.packets += packets;
         self.last_seen = now;
         *self.proto_bytes.entry(proto).or_insert(0) += bytes;
     }
@@ -109,25 +115,28 @@ impl Tables {
     }
 
     /// Projette une trame sur les deux tables (conversations + nœuds).
+    /// Un paquet sans couche 2 (tun Android) n'alimente que la vue L3.
     pub fn ingest(&mut self, meta: &PacketMeta, now: Instant) {
-        let l2_key = L2Key::new(meta.src_mac, meta.dst_mac);
-        self.l2
-            .entry(l2_key)
-            .or_insert_with(|| ConvStats::new(now))
-            .add(meta.wire_len, meta.l2_proto, now);
-        self.dirty_l2.insert(l2_key);
-        for (mac, is_src) in [(meta.src_mac, true), (meta.dst_mac, false)] {
-            let node = self
-                .l2_nodes
-                .entry(mac)
-                .or_insert_with(|| ConvStats::new(now));
-            node.add(meta.wire_len, meta.l2_proto, now);
-            if is_src {
-                node.tx_bytes += meta.wire_len;
-            } else {
-                node.rx_bytes += meta.wire_len;
+        if let Some(l2) = &meta.l2 {
+            let l2_key = L2Key::new(l2.src_mac, l2.dst_mac);
+            self.l2
+                .entry(l2_key)
+                .or_insert_with(|| ConvStats::new(now))
+                .add(meta.wire_len, l2.proto, now);
+            self.dirty_l2.insert(l2_key);
+            for (mac, is_src) in [(l2.src_mac, true), (l2.dst_mac, false)] {
+                let node = self
+                    .l2_nodes
+                    .entry(mac)
+                    .or_insert_with(|| ConvStats::new(now));
+                node.add(meta.wire_len, l2.proto, now);
+                if is_src {
+                    node.tx_bytes += meta.wire_len;
+                } else {
+                    node.rx_bytes += meta.wire_len;
+                }
+                self.dirty_l2_nodes.insert(mac);
             }
-            self.dirty_l2_nodes.insert(mac);
         }
 
         if let Some(l3) = &meta.l3 {
@@ -167,7 +176,7 @@ impl Tables {
                 out.push(node_delta(
                     View::Ether,
                     mac.to_string(),
-                    crate::resolve::oui::label(&mac),
+                    crate::resolve::mac_label(&mac),
                     stats,
                 ));
             }
@@ -320,7 +329,7 @@ impl Tables {
             out.push(node_delta(
                 View::Ether,
                 mac.to_string(),
-                crate::resolve::oui::label(mac),
+                crate::resolve::mac_label(mac),
                 stats,
             ));
         }
@@ -369,11 +378,11 @@ impl Tables {
 }
 
 /// Identifiant d'arête stable : les clés étant normalisées, `a|b` est unique.
-fn edge_id(a: &str, b: &str) -> String {
+pub(crate) fn edge_id(a: &str, b: &str) -> String {
     format!("{a}|{b}")
 }
 
-fn node_delta(view: View, id: String, label: String, stats: &ConvStats) -> Delta {
+pub(crate) fn node_delta(view: View, id: String, label: String, stats: &ConvStats) -> Delta {
     Delta::UpsertNode {
         view,
         id,
@@ -386,7 +395,7 @@ fn node_delta(view: View, id: String, label: String, stats: &ConvStats) -> Delta
     }
 }
 
-fn edge_delta(view: View, a: String, b: String, stats: &ConvStats) -> Delta {
+pub(crate) fn edge_delta(view: View, a: String, b: String, stats: &ConvStats) -> Delta {
     Delta::UpsertEdge {
         view,
         id: edge_id(&a, &b),
@@ -401,7 +410,7 @@ fn edge_delta(view: View, a: String, b: String, stats: &ConvStats) -> Delta {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::packet::L3Meta;
+    use crate::model::packet::{L2Meta, L3Meta};
 
     const MAC_A: Mac = Mac([0x02, 0, 0, 0, 0, 0x0a]);
     const MAC_B: Mac = Mac([0x02, 0, 0, 0, 0, 0x0b]);
@@ -415,10 +424,17 @@ mod tests {
     ) -> PacketMeta {
         PacketMeta {
             wire_len: bytes,
-            src_mac,
-            dst_mac,
-            l2_proto: l2,
-            l3: l3.map(|(src, dst, proto)| L3Meta { src, dst, proto }),
+            l2: Some(L2Meta {
+                src_mac,
+                dst_mac,
+                proto: l2,
+            }),
+            l3: l3.map(|(src, dst, proto)| L3Meta {
+                src,
+                dst,
+                proto,
+                transport: None,
+            }),
             arp_pair: None,
         }
     }
@@ -465,6 +481,28 @@ mod tests {
         );
         assert_eq!(tables.l2.len(), 1);
         assert!(tables.l3.is_empty());
+    }
+
+    #[test]
+    fn tun_packet_without_l2_only_touches_l3() {
+        // Paquet lu sur un tun (Android) : pas de MAC, la vue Etherman reste
+        // vide par construction.
+        let mut tables = Tables::new();
+        let ip_a: IpAddr = "10.0.0.1".parse().unwrap();
+        let ip_b: IpAddr = "10.0.0.2".parse().unwrap();
+        let mut m = meta(
+            MAC_A,
+            MAC_B,
+            100,
+            Proto::Named("IPv4"),
+            Some((ip_a, ip_b, Proto::Named("HTTPS"))),
+        );
+        m.l2 = None;
+        tables.ingest(&m, Instant::now());
+
+        assert!(tables.l2.is_empty() && tables.l2_nodes.is_empty());
+        assert_eq!(tables.l3.len(), 1);
+        assert_eq!(tables.l3_nodes.len(), 2);
     }
 
     #[test]

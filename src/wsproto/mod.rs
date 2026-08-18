@@ -6,12 +6,42 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Vue ciblée par un delta : graphe Etherman (L2) ou Interman (L3).
+/// Bornes du délai de fade réglable par les clients (politique du protocole,
+/// commune au serveur WebSocket du bureau et à la FFI Android).
+pub const FADE_MIN_SECS: u64 = 5;
+pub const FADE_MAX_SECS: u64 = 3600;
+
+/// Sérialise un delta une seule fois, prêt à diffuser (zéro-copie ensuite).
+pub fn encode_delta(delta: &Delta) -> Option<String> {
+    match serde_json::to_string(delta) {
+        Ok(json) => Some(json),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to serialize delta");
+            None
+        }
+    }
+}
+
+/// Encode un message d'information serveur → client.
+pub fn encode_info(info: &ServerInfo) -> Option<String> {
+    match serde_json::to_string(info) {
+        Ok(json) => Some(json),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to serialize server info");
+            None
+        }
+    }
+}
+
+/// Vue ciblée par un delta : graphe Etherman (L2), Interman (L3), ou —
+/// Android uniquement — Appman (conversations application ↔ hôte distant).
+/// Le client web ignore silencieusement les vues qu'il ne connaît pas.
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum View {
     Ether,
     Inter,
+    App,
 }
 
 /// Mutation atomique d'un des deux graphes.
@@ -132,6 +162,44 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&rm).unwrap(),
             r#"{"type":"remove_edge","view":"inter","id":"10.0.0.1|10.0.0.2"}"#
+        );
+
+        // Vue Appman (Android) : mêmes formes, `view` vaut "app", les nœuds
+        // application portent l'id "app:<uid>".
+        let app_node = Delta::UpsertNode {
+            view: View::App,
+            id: "app:10123".into(),
+            label: "Firefox".into(),
+            bytes: 2048,
+            bytes_in: 1024,
+            bytes_out: 1024,
+            packets: 4,
+            proto: "HTTPS".into(),
+        };
+        assert_eq!(
+            serde_json::to_string(&app_node).unwrap(),
+            r#"{"type":"upsert_node","view":"app","id":"app:10123","label":"Firefox","bytes":2048,"bytes_in":1024,"bytes_out":1024,"packets":4,"proto":"HTTPS"}"#
+        );
+        let app_edge = Delta::UpsertEdge {
+            view: View::App,
+            id: "app:10123|93.184.216.34".into(),
+            source: "app:10123".into(),
+            target: "93.184.216.34".into(),
+            bytes: 2048,
+            packets: 4,
+            proto: "HTTPS".into(),
+        };
+        assert_eq!(
+            serde_json::to_string(&app_edge).unwrap(),
+            r#"{"type":"upsert_edge","view":"app","id":"app:10123|93.184.216.34","source":"app:10123","target":"93.184.216.34","bytes":2048,"packets":4,"proto":"HTTPS"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Delta::RemoveNode {
+                view: View::App,
+                id: "app:10123".into(),
+            })
+            .unwrap(),
+            r#"{"type":"remove_node","view":"app","id":"app:10123"}"#
         );
     }
 

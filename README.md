@@ -177,6 +177,20 @@ address rather than the wildcard itself, which no browser can connect to.
   and the last packet seen since the host has been displayed continuously.
 - Wheel = zoom, drag = pan.
 
+## Android (Appman + Interman)
+
+There is also a **standalone Android port** under [`android/`](android/): a
+passive monitor for your own device's traffic, captured through Android's
+`VpnService` (no root), with a native Jetpack Compose UI that adapts across
+phone, foldable and tablet. A device VPN has no layer 2, so the left panel
+becomes **Appman** — one node per Android app (named via `PackageManager`,
+attributed with `getConnectionOwnerUid`) talking to remote hosts; **Interman**
+is unchanged. It reuses the same Rust aggregation core and delta protocol as
+the desktop build (compiled with `cargo-ndk`, exposed to Kotlin via UniFFI),
+and carries the traffic it observes through a userspace forwarding engine so
+the phone stays online. See [`android/README.md`](android/README.md) for build
+and run instructions.
+
 ## Architecture (summary)
 
 ```

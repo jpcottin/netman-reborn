@@ -183,3 +183,33 @@ let s = SlicedPacket::from_ethernet(data)?; // fallback: LaxSlicedPacket
   agréger les deux sens dans une seule arête.
 - UI en **anglais** (décision utilisateur). Port par défaut **8080**,
   fade par défaut **60 s** (CLI `--fade`).
+
+## Port Android (Appman + Interman)
+
+- **Capture** : `VpnService` (tun, non root) — seul point de capture sur un
+  téléphone non rooté. Paquets IP nus (`IFF_NO_PI`), décodés par un nouveau
+  `parse_ip_packet` (etherparse `SlicedPacket::from_ip`) frère de `parse_frame`.
+- **Forwarding** : `ipstack = "1.0.1"` (userspace TCP/UDP sur tun) — obligé, un
+  VpnService doit réacheminer le trafic. Sockets sortantes `protect()`-ées +
+  `addDisallowedApplication(self)` (double ceinture anti-boucle, dont la
+  résolution DNS via netd du propriétaire du VPN).
+- **FFI** : `uniffi = "0.32.0"` (proc-macros, pas d'UDL ; bindgen mode
+  « library »). Deltas transportés en **JSON** (réutilise le contrat `wsproto`
+  gelé et ses tests) via callback `on_deltas`, plutôt que des records typés.
+- **Attribution Appman** : `getConnectionOwnerUid` (API 29 → minSdk 29), appel
+  binder hors chemin paquet ; flux en attente tamponnés puis versés au bon uid
+  (ou « Unknown »). Nœud application `app:<uid>`, label via `PackageManager`.
+- **Cœur partagé** : `model/`, `wsproto/`, `resolve/` compilent sans pcap ni
+  axum (gate `cfg(not(target_os = "android"))` sur `capture`, `server`, la base
+  OUI 3,1 Mo). Espace de travail Cargo, membre par défaut = paquet `netman`
+  (le bureau se construit inchangé). Boucle d'agrégation extraite dans
+  `src/agg/` avec un point d'extension `AggExt` (vue App côté Android, `NoExt`
+  côté bureau).
+- **Toolchain** : cargo-ndk 4.1.2 (attention : `-p` = paquet cargo ; l'API
+  niveau se passe via `--platform`), NDK 29, AGP 9 (l'API SourceSet refuse un
+  `Provider` → `android.sourceset.disallowProvider=false` + dépendances de
+  tâche recâblées à la main). ABIs arm64-v8a + x86_64 (émulateur).
+- **UI** : Jetpack Compose, thème sombre calqué sur le web, adaptatif
+  (WindowSizeClass : deux panneaux côte à côte en large, onglets en portrait).
+  Les calculs `static/app.js` (layouts en cercles, EWMA de débit, mapping
+  visuel) sont portés en Kotlin pur et testés sur la JVM.

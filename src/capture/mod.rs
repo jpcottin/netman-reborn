@@ -4,11 +4,13 @@
 //! consommateur, aucune résolution/IO sur le chemin du paquet.
 
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use pcap::{Active, Capture, Device};
+
+pub use crate::stats::CaptureStats;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CaptureError {
@@ -22,21 +24,6 @@ pub enum CaptureError {
     Spawn(#[from] std::io::Error),
     #[error("capture controller state poisoned")]
     Poisoned,
-}
-
-/// Compteurs partagés entre le thread de capture et l'affichage.
-/// Le thread de capture ne fait qu'incrémenter des atomiques : aucun lock.
-#[derive(Debug, Default)]
-pub struct CaptureStats {
-    pub frames: AtomicU64,
-    pub bytes: AtomicU64,
-    /// Paquets perdus par le kernel/Npcap (compteur cumulatif `ps_drop`).
-    pub kernel_drops: AtomicU64,
-    /// Trames non décodables (pas Ethernet II, tronquées…).
-    pub parse_errors: AtomicU64,
-    /// Métadonnées jetées car le channel vers l'agrégateur était plein
-    /// (invariant 5 : on jette plutôt que de bloquer la capture).
-    pub chan_drops: AtomicU64,
 }
 
 pub fn list_devices() -> Result<Vec<Device>, CaptureError> {

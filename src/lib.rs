@@ -1,10 +1,17 @@
 //! Netman Reborn — bibliothèque : capture, modèle d'agrégation.
 //! Le binaire (`main.rs`) ne fait que le câblage CLI/threads.
 
+// `capture` (pcap) et `server` (axum) n'existent que sur le bureau : le build
+// Android capture depuis un descripteur tun et livre les deltas par callback.
+#[cfg(not(target_os = "android"))]
 pub mod capture;
+#[cfg(not(target_os = "android"))]
+pub mod server;
+
+pub mod agg;
 pub mod model;
 pub mod resolve;
-pub mod server;
+pub mod stats;
 pub mod wsproto;
 
 /// Npcap installe wpcap.dll dans System32\Npcap, hors du chemin de recherche

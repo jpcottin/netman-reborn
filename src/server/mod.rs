@@ -9,7 +9,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use axum::extract::ws::{Message, Utf8Bytes, WebSocket, WebSocketUpgrade};
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
 use axum::response::Response;
 use axum::routing::get;
@@ -19,11 +19,11 @@ use tokio::sync::broadcast;
 use tower_http::services::ServeDir;
 
 use crate::model::tables::Tables;
-use crate::wsproto::{ClientCommand, Delta, IfaceInfo, ServerInfo};
+use crate::wsproto::{ClientCommand, IfaceInfo, ServerInfo};
 
-/// Bornes du délai de fade réglable depuis l'IHM.
-pub const FADE_MIN_SECS: u64 = 5;
-pub const FADE_MAX_SECS: u64 = 3600;
+// Politique du protocole et encodage : dans `wsproto` (partagés avec la FFI
+// Android) ; ré-exportés ici pour les appelants historiques.
+pub use crate::wsproto::{encode_delta, encode_info, FADE_MAX_SECS, FADE_MIN_SECS};
 
 /// Interfaces disponibles + interface active, tenues à jour par le
 /// contrôleur de capture. Vide en mode fichier (sélecteur masqué).
@@ -48,7 +48,7 @@ pub struct AppState {
     /// Tables possédées par l'agrégateur ; lues ici uniquement pour le
     /// snapshot de connexion (verrou bref, jamais tenu à travers un await).
     pub tables: Arc<Mutex<Tables>>,
-    pub deltas_tx: broadcast::Sender<Utf8Bytes>,
+    pub deltas_tx: broadcast::Sender<String>,
     /// Délai de fade courant (secondes), réglable par les clients.
     pub fade_secs: Arc<AtomicU64>,
     pub iface_state: Arc<Mutex<IfaceState>>,
@@ -64,30 +64,8 @@ pub fn router(state: AppState, static_dir: &str) -> Router {
         .with_state(state)
 }
 
-/// Sérialise un delta une seule fois, prêt à diffuser (zéro-copie ensuite).
-pub fn encode_delta(delta: &Delta) -> Option<Utf8Bytes> {
-    match serde_json::to_string(delta) {
-        Ok(json) => Some(Utf8Bytes::from(json)),
-        Err(e) => {
-            tracing::error!(error = %e, "failed to serialize delta");
-            None
-        }
-    }
-}
-
 async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> Response {
     ws.on_upgrade(move |socket| client_loop(socket, state))
-}
-
-/// Encode un message d'information serveur → client.
-pub fn encode_info(info: &ServerInfo) -> Option<Utf8Bytes> {
-    match serde_json::to_string(info) {
-        Ok(json) => Some(Utf8Bytes::from(json)),
-        Err(e) => {
-            tracing::error!(error = %e, "failed to serialize server info");
-            None
-        }
-    }
 }
 
 /// Traite un message texte reçu d'un client.
@@ -121,7 +99,7 @@ fn handle_client_command(text: &str, state: &AppState) {
 /// Efface l'historique des tables (les caches DNS survivent — voir
 /// `Tables::reset`) et notifie tous les clients de vider leurs vues.
 /// Utilisé par la commande Reset ET lors d'un changement d'interface.
-pub fn reset_history(tables: &Arc<Mutex<Tables>>, deltas_tx: &broadcast::Sender<Utf8Bytes>) {
+pub fn reset_history(tables: &Arc<Mutex<Tables>>, deltas_tx: &broadcast::Sender<String>) {
     if let Ok(mut tables) = tables.lock() {
         tables.reset();
     }
@@ -135,7 +113,7 @@ async fn client_loop(socket: WebSocket, state: AppState) {
     // au pire on reçoit des upserts en double (valeurs absolues → sans effet).
     let mut deltas_rx = state.deltas_tx.subscribe();
 
-    let snapshot: Vec<Utf8Bytes> = {
+    let snapshot: Vec<String> = {
         let Ok(tables) = state.tables.lock() else {
             tracing::error!("tables mutex poisoned, closing client");
             return;
@@ -150,7 +128,7 @@ async fn client_loop(socket: WebSocket, state: AppState) {
     let (mut sink, mut stream) = socket.split();
     // Configuration + interfaces d'abord (les contrôles s'initialisent),
     // puis snapshot.
-    let mut preamble: Vec<Utf8Bytes> = Vec::with_capacity(2);
+    let mut preamble: Vec<String> = Vec::with_capacity(2);
     if let Some(msg) = encode_info(&ServerInfo::Config {
         fade_secs: state.fade_secs.load(Ordering::Relaxed),
     }) {
@@ -162,12 +140,12 @@ async fn client_loop(socket: WebSocket, state: AppState) {
         }
     }
     for msg in preamble {
-        if sink.send(Message::Text(msg)).await.is_err() {
+        if sink.send(Message::Text(msg.into())).await.is_err() {
             return;
         }
     }
     for msg in snapshot {
-        if sink.send(Message::Text(msg)).await.is_err() {
+        if sink.send(Message::Text(msg.into())).await.is_err() {
             return;
         }
     }
@@ -177,7 +155,7 @@ async fn client_loop(socket: WebSocket, state: AppState) {
         tokio::select! {
             received = deltas_rx.recv() => match received {
                 Ok(msg) => {
-                    if sink.send(Message::Text(msg)).await.is_err() {
+                    if sink.send(Message::Text(msg.into())).await.is_err() {
                         break;
                     }
                 }
