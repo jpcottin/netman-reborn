@@ -41,6 +41,15 @@ L'outil est un **moniteur passif**. Voir §3.
    formule Homebrew macOS dans le tap `AlexandreFenyo/homebrew-netman` ; l'un
    comme l'autre doivent suivre toute modification de la CLI, du `rc.d` ou des
    chemins d'installation.
+   **Exception documentée — Android (`android/`).** Sur un téléphone non
+   rooté, le seul point de capture est le tun d'un `VpnService` : une couche
+   virtualisée, par nature. C'est l'unique dérogation à cet invariant, et elle
+   est inévitable (aucun accès `bpf`/`AF_PACKET` sans root). Conséquences
+   assumées : on ne voit que le trafic de l'appareil (pas celui des voisins),
+   il n'y a pas de couche 2 (donc pas de vue Etherman), et l'application doit
+   **réacheminer** le trafic qu'elle observe (moteur de forwarding userspace,
+   `ipstack`) sinon le téléphone perd le réseau. La capture native pcap reste
+   la règle partout ailleurs.
 4. **Aucune résolution bloquante dans le chemin de capture.** OUI (MAC→vendeur)
    et hostnames sont best-effort, asynchrones, jamais sur le trajet critique du
    paquet.
@@ -51,7 +60,12 @@ L'outil est un **moniteur passif**. Voir §3.
 6. **Deltas atomiques.** Le protocole WebSocket transporte des mutations de
    graphe atomiques (upsert/remove nœud/arête). Le frontend applique, il ne
    recalcule pas. Le schéma WebSocket est un **contrat** : toute modification
-   met à jour backend ET frontend dans le même commit.
+   met à jour backend ET clients dans le même commit. Il y a désormais **trois
+   clients** de ce contrat : le backend (`wsproto`), le frontend web
+   (`static/app.js`), et le client Kotlin (`android/.../core/DeltaProtocol.kt`
+   — mêmes messages en JSON via callback UniFFI au lieu du WebSocket). La vue
+   `View::App` (Appman, Android) s'ajoute à `ether`/`inter` : le client web
+   ignore silencieusement les vues inconnues.
 7. **Le fade émet des suppressions.** Le vieillissement (nœuds/arêtes non revus
    depuis N s) produit des messages `remove_*` explicites, pas un silence.
 
