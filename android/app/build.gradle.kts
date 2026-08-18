@@ -50,7 +50,9 @@ val generateUniffiBindings by tasks.registering(Exec::class) {
   inputs.file(lib)
   outputs.dir(uniffiDir)
   commandLine(
-    "cargo", "run", "--quiet", "-p", "netman-android", "--bin", "uniffi-bindgen",
+    // Outil isolé (ne dépend que d'uniffi) : la génération ne recompile pas
+    // la pile bureau, donc pas de dépendance à libpcap côté hôte.
+    "cargo", "run", "--quiet", "-p", "netman-uniffi-bindgen", "--bin", "uniffi-bindgen",
     "--", "generate", "--library", lib.absolutePath,
     "--language", "kotlin", "--no-format",
     "--out-dir", uniffiDir.absolutePath,

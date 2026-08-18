@@ -14,13 +14,9 @@ name = "netman_android"
 # rlib en plus du cdylib : nécessaire aux tests d'intégration sur l'hôte.
 crate-type = ["cdylib", "rlib"]
 
-[[bin]]
-name = "uniffi-bindgen"
-path = "src/bin/uniffi-bindgen.rs"
-
 [dependencies]
 netman = { path = "../../.." }
-uniffi = { version = "0.32", features = ["cli"] }
+uniffi = { version = "0.32" }
 tokio = { version = "1.53.0", features = ["rt-multi-thread", "sync", "time", "macros"] }
 libc = "0.2"
 serde_json = "1"

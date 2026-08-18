@@ -2,7 +2,7 @@
 # défaut — `cargo build --release` à la racine ne construit que lui. Le crate
 # Android (`android/rust/netman-android`) n'est construit que sur demande.
 [workspace]
-members = [".", "android/rust/netman-android"]
+members = [".", "android/rust/netman-android", "android/rust/uniffi-bindgen"]
 
 [package]
 name = "netman"
