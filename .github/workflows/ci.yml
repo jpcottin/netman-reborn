@@ -6,7 +6,9 @@ on:
   pull_request:
 
 jobs:
-  # Cœur Rust : bureau (pcap/axum) + crate Android (cross-compilé).
+  # Cœur Rust : workspace complet (bureau + crate Android, compilée pour l'hôte
+  # par `cargo test`). La cross-compilation Android réelle est faite dans le job
+  # `android` via cargo-ndk (elle exige le NDK, absent d'un runner nu).
   rust:
     runs-on: ubuntu-latest
     steps:
@@ -18,7 +20,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-          targets: aarch64-linux-android, x86_64-linux-android
 
       - uses: Swatinem/rust-cache@v2
 
@@ -30,9 +31,6 @@ jobs:
 
       - name: Test (workspace)
         run: cargo test --workspace
-
-      - name: Android crate cross-compiles (arm64)
-        run: cargo build -p netman-android --target aarch64-linux-android --release
 
   # Application Android : build + tests unitaires JVM.
   android:
