@@ -21,12 +21,13 @@ data class VizNode(
     val proto: String,
 )
 
-/** Arête figée pour le rendu Canvas. */
+/** Arête figée pour le rendu Canvas. `rate` = débit lissé (octets/s). */
 data class VizEdge(
     val id: String,
     val source: String,
     val target: String,
     val bytes: Long,
+    val rate: Double,
     val proto: String,
 )
 
@@ -50,7 +51,7 @@ fun GraphStore.toSnapshot(): GraphSnapshot = GraphSnapshot(
     nodes = nodes.values.map {
         VizNode(it.id, it.label, it.bytes, it.bytesIn, it.bytesOut, it.proto)
     },
-    edges = edges.values.map { VizEdge(it.id, it.source, it.target, it.bytes, it.proto) },
+    edges = edges.values.map { VizEdge(it.id, it.source, it.target, it.bytes, it.rate, it.proto) },
 )
 
 /** Projette un GraphStore en lignes triées par octets décroissants — la

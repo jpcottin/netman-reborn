@@ -27,6 +27,7 @@ object GraphReducer {
         batch: List<String>,
         seen: Set<String>,
         paused: Boolean,
+        now: Double = 0.0,
     ): ReduceResult {
         var fade: Long? = null
         var sawReset = false
@@ -41,7 +42,7 @@ object GraphReducer {
                     sawReset = true
                 }
                 null -> {}
-                else -> if (!paused) applyDelta(appView, interView, msg, newSeen)
+                else -> if (!paused) applyDelta(appView, interView, msg, newSeen, now)
             }
         }
         return ReduceResult(fade, newSeen, sawReset)
@@ -52,6 +53,7 @@ object GraphReducer {
         interView: GraphStore,
         msg: DeltaMessage,
         seen: MutableSet<String>,
+        now: Double,
     ) {
         when (msg) {
             is DeltaMessage.UpsertNode -> {
@@ -62,7 +64,7 @@ object GraphReducer {
             }
             is DeltaMessage.UpsertEdge -> {
                 store(appView, interView, msg.view)?.upsertEdge(
-                    msg.id, msg.source, msg.target, msg.bytes, msg.packets, msg.proto,
+                    msg.id, msg.source, msg.target, msg.bytes, msg.packets, msg.proto, now,
                 )
                 registerProto(msg.proto, seen)
             }

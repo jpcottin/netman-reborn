@@ -41,6 +41,35 @@ class GraphStoreTest {
     }
 
     @Test
+    fun edge_rate_ewma_seeds_at_zero_then_tracks_throughput() {
+        val s = GraphStore()
+        // Premier upsert : amorçage, débit nul.
+        s.upsertEdge("a|b", "a", "b", 0, 0, "HTTPS", now = 0.0)
+        assertEquals(0.0, s.edges.getValue("a|b").rate, 1e-9)
+
+        // 1000 octets/s pendant plusieurs pas : l'EWMA converge vers ~1000.
+        var bytes = 0L
+        for (i in 1..30) {
+            bytes += 1000
+            s.upsertEdge("a|b", "a", "b", bytes, i.toLong(), "HTTPS", now = i.toDouble())
+        }
+        assertEquals(1000.0, s.edges.getValue("a|b").rate, 60.0)
+    }
+
+    @Test
+    fun edge_rate_decays_when_silent() {
+        val s = GraphStore()
+        s.upsertEdge("a|b", "a", "b", 0, 0, "DNS", now = 0.0)
+        // Amène le débit au-dessus de 1 pour que la décroissance s'applique.
+        s.upsertEdge("a|b", "a", "b", 10_000, 1, "DNS", now = 1.0)
+        val before = s.edges.getValue("a|b").rate
+        assertTrue(before > 1.0)
+        // Silence > 2 s : le débit décroît.
+        s.decayRates(now = 4.0)
+        assertTrue(s.edges.getValue("a|b").rate < before)
+    }
+
+    @Test
     fun clear_empties_everything() {
         val s = GraphStore()
         s.upsertEdge("a|b", "a", "b", 10, 1, "DNS")

@@ -19,17 +19,19 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.jpcottin.netman.graph.Declutter
 import dev.jpcottin.netman.graph.GuideCircle
 import dev.jpcottin.netman.graph.LayoutResult
 import dev.jpcottin.netman.graph.Layouts
@@ -266,14 +268,13 @@ private fun DrawScope.drawGraph(
 
     val byId = anim.snapshot.nodes.associateBy { it.id }
 
-    // Arêtes : couleur = protocole, épaisseur ∝ octets (proxy du débit, faute
-    // d'un EWMA par arête dans cette vue instantanée).
+    // Arêtes : couleur = protocole, épaisseur ∝ débit lissé (EWMA, octets/s).
     for (e in anim.snapshot.edges) {
         val a = positions[e.source] ?: continue
         val b = positions[e.target] ?: continue
         val dimmed = protoFilter != null && e.proto != protoFilter
         if (dimmed) continue
-        val width = Visual.edgeWidth(e.bytes.toDouble(), linkScale)
+        val width = Visual.edgeWidth(e.rate, linkScale)
         drawLine(
             color = Visual.edgeColor(e.proto),
             start = Offset(sx(a.x), sy(a.y)),
@@ -282,12 +283,14 @@ private fun DrawScope.drawGraph(
         )
     }
 
-    // Nœuds : taille ∝ log(octets), couleur = protocole dominant.
+    // Nœuds : taille ∝ log(octets), couleur = protocole dominant. On collecte
+    // au passage les candidats-étiquettes pour le décombrement.
+    data class LabelBox(val label: String, val center: Offset, val r: Float, val bytes: Long)
+    val labelCandidates = ArrayList<LabelBox>()
     for ((id, p) in positions) {
         val node = byId[id] ?: continue
         val dimmed = protoFilter != null && node.proto != protoFilter
-        val baseR = Visual.nodeSize(node.bytes)
-        val r = max(baseR, 2f)
+        val r = max(Visual.nodeSize(node.bytes), 2f)
         val color = if (dimmed) Visual.DIMMED_COLOR else Visual.protoColor(node.proto)
         val center = Offset(sx(p.x), sy(p.y))
         drawCircle(color = color, radius = r, center = center)
@@ -299,25 +302,32 @@ private fun DrawScope.drawGraph(
                 style = Stroke(width = 2f),
             )
         }
-        // Label si le nœud est assez gros à l'écran (seuil sigma).
         if (!dimmed && r >= LABEL_MIN_PX) {
-            drawNodeLabel(measurer, node.label, center, r)
+            labelCandidates.add(LabelBox(node.label, center, r, node.bytes))
         }
+    }
+
+    // Étiquettes décombrées : les plus gros nœuds d'abord ; une étiquette
+    // n'est dessinée que si sa boîte ne recouvre aucune déjà posée (le nœud
+    // sélectionné est prioritaire pour rester toujours lisible).
+    val ordered = labelCandidates.sortedWith(
+        compareByDescending<LabelBox> { it.label == selectedLabel(byId, selectedId) }
+            .thenByDescending { it.bytes },
+    )
+    val layouts = ordered.map {
+        measurer.measure(it.label, TextStyle(color = Visual.FG, fontSize = 11.sp))
+    }
+    val boxes = ordered.mapIndexed { i, c ->
+        val topLeft = Offset(c.center.x + c.r + 3f, c.center.y - layouts[i].size.height / 2f)
+        Rect(topLeft, Size(layouts[i].size.width.toFloat(), layouts[i].size.height.toFloat()))
+    }
+    val keep = Declutter.keep(boxes)
+    for (i in ordered.indices) {
+        if (!keep[i]) continue
+        drawText(textLayoutResult = layouts[i], topLeft = boxes[i].topLeft)
     }
 }
 
-private fun DrawScope.drawNodeLabel(
-    measurer: TextMeasurer,
-    label: String,
-    center: Offset,
-    r: Float,
-) {
-    val layout: TextLayoutResult = measurer.measure(
-        text = label,
-        style = TextStyle(color = Visual.FG, fontSize = 11.sp),
-    )
-    drawText(
-        textLayoutResult = layout,
-        topLeft = Offset(center.x + r + 3f, center.y - layout.size.height / 2f),
-    )
-}
+/** Label du nœud sélectionné (pour le prioriser au décombrement), ou null. */
+private fun selectedLabel(byId: Map<String, VizNode>, selectedId: String?): String? =
+    selectedId?.let { byId[it]?.label }

@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -47,7 +48,22 @@ object GraphRepository {
                 applyBatch(batch)
             }
         }
+        // Ticker 1 Hz : décroissance des débits d'arêtes silencieuses puis
+        // redraw (comme le ticker de static/app.js). Sur le dispatcher
+        // principal : mêmes règles d'accès que le réducteur, aucun verrou.
+        scope.launch {
+            while (true) {
+                delay(1000)
+                val now = monotonicSeconds()
+                appView.decayRates(now)
+                interView.decayRates(now)
+                _frameTick.value += 1
+            }
+        }
     }
+
+    /** Base de temps monotone en secondes (comme performance.now()/1000). */
+    private fun monotonicSeconds(): Double = System.nanoTime() / 1_000_000_000.0
 
     /** Appelé depuis le thread du callback Rust : enfile et rend la main. */
     fun offer(deltas: List<String>) {
@@ -62,7 +78,8 @@ object GraphRepository {
     }
 
     private fun applyBatch(batch: List<String>) {
-        val result = GraphReducer.apply(appView, interView, batch, _seenProtos.value, paused)
+        val result =
+            GraphReducer.apply(appView, interView, batch, _seenProtos.value, paused, monotonicSeconds())
         result.fadeSecs?.let { _fadeSecs.value = it }
         if (result.seenProtos.size != _seenProtos.value.size) {
             _seenProtos.value = result.seenProtos
